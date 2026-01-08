@@ -24,7 +24,7 @@ $(BIN_DIR):
 	mkdir -p $(BIN_DIR)
 
 main: cmds
-	$(CXX) $(CXXFLAGS) $(MAIN)/$@.cpp -o $(BIN_DIR)/$@ $(LDFLAGS)
+	$(CXX) $(CXXFLAGS) $(MAIN)/builtins.cpp $(MAIN)/main.cpp -o $(BIN_DIR)/main $(LDFLAGS)
 
 shell: main
 	$(BIN_DIR)/main
