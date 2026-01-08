@@ -76,7 +76,7 @@ int delete_dir(char* dirname) {
 int main (int argc, char* argv[]) {
 
     if (argc < 2) {
-        cerr << "No arguments provided";
+        cerr << "No arguments provided" << endl;
         help();
         return 1;
     }
