@@ -6,9 +6,119 @@
 #include <sys/wait.h>
 #include <cstdlib>
 #include <cstdio>
+#include <termios.h>
 #include "builtins.h"
 
 using namespace std;
+
+termios orig;
+
+void enable_raw_mode() {
+    tcgetattr(STDIN_FILENO, &orig);
+    termios raw = orig;
+
+    raw.c_lflag &= ~(ICANON | ECHO);
+    tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw);
+}
+
+void disable_raw_mode() {
+    tcsetattr(STDIN_FILENO, TCSAFLUSH, &orig);
+}
+
+string user_input_loop(vector<string> &history, int &history_index) {
+    string line;
+    char c;
+
+    while (true) {
+        // get current char
+        read(STDIN_FILENO, &c, 1);
+
+        // if current char is newline, add to history and break input loop
+        if (c == '\r' || c == '\n') {
+            std::cout << '\n';
+
+            if (!line.empty()) {
+                history.push_back(line);
+            }
+            history_index = -1;
+            break;
+        }
+
+        // if char is backspace, remove char from current line
+        if (c == '\x7f') { // backspace
+            if (!line.empty()) {
+                line.pop_back();
+                std::cout << "\b \b" << flush;
+            }
+            continue;
+        }
+
+        // if char is escape seq read next two chars
+        if (c == '\x1b') { // escape seq
+            char seq[2];
+            read(STDIN_FILENO, &seq[0], 1);
+            read(STDIN_FILENO, &seq[1], 1);
+
+            if (seq[0] == '[' && seq[1] == 'A') {
+                //up arrow
+                
+                if (!history.empty()) {
+                    if (history_index == -1) {
+                        // get latest
+                        history_index = history.size() - 1;
+                    } else if (history_index > 0) {
+                        // move back further
+                        history_index--;
+                    }
+
+                    // Clear current line
+                    while (!line.empty()) {
+                        std::cout << "\b \b";
+                        line.pop_back();
+                    }
+
+                    // replace current line with line from history
+                    line = history[history_index];
+                    std::cout << line << flush;
+                }
+            } else if (seq[0] == '[' && seq[1] == 'B') {
+                //down arrow
+                // Clear current line first
+                while (!line.empty()) {
+                    std::cout << "\b \b";
+                    line.pop_back();
+                }
+
+                if (!history.empty() && history_index >= 0) {
+                    history_index++;
+                    if (history_index >= static_cast<int>(history.size())) {
+                        // Gone past the end, clear and reset
+                        history_index = -1;
+                        line.clear();
+                    } else {
+                        line = history[history_index];
+                    }
+                } else {
+                    history_index = -1;
+                    line.clear();
+                }
+
+                // Redraw prompt and line
+                std::cout << "\r\033[K";  // carriage return + clear line
+                std::cout << "\033[34m>> " << line << flush;
+            }
+            continue;
+
+        } 
+
+        line.push_back(c);
+        std::cout << c << flush;
+
+
+    }
+    return line;
+}
+
 
 /**
  * Parse args from string
@@ -27,13 +137,15 @@ vector<string> get_args(string &line) {
 }
 
 void shell_loop() {
+    vector<string> history;
+    int history_cursor = -1;
     string line; // Store the current line of input
     int status = 0; // Store the status of the last command
 
     while (true) {
-        cout << "\033[34m" << ">> " << flush;
-        getline(cin, line);
-        cout << "\033[0m" << flush;
+        std::cout << "\033[34m" << ">> " << flush;
+        line = user_input_loop(history, history_cursor);
+        std::cout << "\033[0m" << flush;
         vector<string> args = get_args(line);
         if (args.empty()) {
             continue;
@@ -47,7 +159,7 @@ void shell_loop() {
         }
 
         status = execute_command(args);
-        cout << "\033[0m";
+        std::cout << "\033[0m";
     }
     
 }
@@ -61,10 +173,16 @@ int main() {
     string new_path = string("./cppshell/bin:") + (old_path ? old_path : ""); // prepend custom bin to PATH w/o editing it
     setenv("PATH", new_path.c_str(), 1);
 
+    // put into raw mode
+
+    enable_raw_mode();
+
     // Main loop
     shell_loop();
     
     // Clean up 
+
+    disable_raw_mode();
 
     // Return success
     return 0;
